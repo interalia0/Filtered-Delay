@@ -139,7 +139,6 @@ void FilteredDelayAudioProcessor::prepareToPlay (double sampleRate, int samplesP
     filter.prepare(spec);
     mod.prepare(spec);
     
-    mixer.setWetMixProportion(0);
     mod.setCentreDelay(15.0f);
     mod.setMix(0);
     mod.setFeedback(0);
@@ -198,6 +197,7 @@ void FilteredDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
     
     const int subdivisionIndex = static_cast<int>(syncRateChoiceParameter->getValue() * subdivisions.size());
     const float selectedSubdivisionValue = subdivisions[subdivisionIndex];
+    
     
     double bpm {120};
         if (auto bpmFromHost = *getPlayHead()->getPosition()->getBpm())
@@ -298,15 +298,18 @@ juce::AudioProcessorEditor* FilteredDelayAudioProcessor::createEditor()
 //==============================================================================
 void FilteredDelayAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
-    // You should use this method to store your parameters in the memory block.
-    // You could do that either as raw data, or use the XML or ValueTree classes
-    // as intermediaries to make it easy to save and load complex data.
+    auto state = treeState.copyState();
+    std::unique_ptr<juce::XmlElement> xml (state.createXml());
+    copyXmlToBinary (*xml, destData);
 }
 
 void FilteredDelayAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
-    // You should use this method to restore your parameters from this memory block,
-    // whose contents will have been created by the getStateInformation() call.
+    std::unique_ptr<juce::XmlElement> xmlState (getXmlFromBinary (data, sizeInBytes));
+
+    if (xmlState.get() != nullptr)
+        if (xmlState->hasTagName (treeState.state.getType()))
+            treeState.replaceState (juce::ValueTree::fromXml (*xmlState));
 }
 
 //==============================================================================
