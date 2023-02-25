@@ -55,18 +55,21 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
    
     juce::AudioProcessorValueTreeState treeState;
+
     
 
 private:
 
 // Delay
     static constexpr auto maxDelaySamples = 192000;
-    juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::None> delayL {maxDelaySamples};
-    juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::None> delayR {maxDelaySamples};
+    juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Lagrange3rd> delayL {maxDelaySamples};
+    juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Lagrange3rd> delayR {maxDelaySamples};
     
-    std::array<juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear>, 2> delayTimeValue;
     float delayTimeInSamples {0};
-    float delayOffsetValue {0.0f};
+    juce::SmoothedValue<float, juce::Interpolators::WindowedSinc> delayTimeSmoothedValue {0};
+
+    float delayOffsetInSamples {0.0f};
+    juce::SmoothedValue<float, juce::Interpolators::WindowedSinc> delayOffsetSmoothedValue {0};
     std::array<float, 2> lastDelayOutputL;
     std::array<float, 2> lastDelayOutputR;
     std::array<juce::LinearSmoothedValue<float>, 2> delayFeedbackVolume;

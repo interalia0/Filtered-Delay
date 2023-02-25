@@ -147,6 +147,9 @@ void FilteredDelayAudioProcessor::prepareToPlay (double sampleRate, int samplesP
     for (auto& volume : delayFeedbackVolume)
         volume.reset (spec.sampleRate, 0.05);
     
+    delayTimeSmoothedValue.reset(sampleRate, 0.0025f);
+    delayOffsetSmoothedValue.reset(sampleRate, 0.0025f);
+  
 
     std::fill (lastDelayOutputL.begin(), lastDelayOutputL.end(), 0.0f);
     std::fill (lastDelayOutputR.begin(), lastDelayOutputR.end(), 0.0f);
@@ -219,6 +222,9 @@ void FilteredDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
     {
         auto *samplesIn = input.getChannelPointer(channel);
         auto *samplesOut = output.getChannelPointer(channel);
+        
+        delayOffsetSmoothedValue.setTargetValue(delayOffsetInSamples);
+        
  
 //          Check for synced or free delay time
         if (bpmSyncParameter->getValue())
@@ -228,13 +234,16 @@ void FilteredDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
             treeState.getParameter("RATE")->beginChangeGesture();
             treeState.getParameter("RATE")->setValueNotifyingHost(juce::NormalisableRange<float>(1.0f, 2000.0f, 1.0f).convertTo0to1(delayTimeInMillisec));
             treeState.getParameter("RATE")->endChangeGesture();
-            delayL.setDelay(delayTimeInSamples + delayOffsetValue);
-            delayR.setDelay(delayTimeInSamples);
+            
+            delayTimeSmoothedValue.setTargetValue(delayTimeInSamples);
+            delayL.setDelay(delayTimeSmoothedValue.getNextValue() + delayOffsetSmoothedValue.getNextValue());
+            delayR.setDelay(delayTimeSmoothedValue.getNextValue());
         }
         else
         {
-            delayL.setDelay(delayTimeValue[channel].getNextValue() + delayOffsetValue);
-            delayR.setDelay(delayTimeValue[channel].getNextValue());
+            delayTimeSmoothedValue.setTargetValue(delayTimeInSamples);
+            delayL.setDelay(delayTimeSmoothedValue.getNextValue() + delayOffsetSmoothedValue.getNextValue());
+            delayR.setDelay(delayTimeSmoothedValue.getNextValue());
         }
 
 //        Left delay line
@@ -313,7 +322,7 @@ void FilteredDelayAudioProcessor::parameterChanged (const juce::String& paramete
   
     if (parameterID == "RATE")
     {
-        std::fill (delayTimeValue.begin(), delayTimeValue.end(), newValue / 1000.0 * getSampleRate());
+        delayTimeInSamples = newValue / 1000.0 * getSampleRate();
     }
     
     if (parameterID == "MIX")
@@ -331,7 +340,7 @@ void FilteredDelayAudioProcessor::parameterChanged (const juce::String& paramete
     
     if (parameterID == "WIDTH")
     {
-        delayOffsetValue = newValue / 1000.0 * getSampleRate();
+        delayOffsetInSamples = newValue / 1000.0 * getSampleRate();
         
     }
 
@@ -393,7 +402,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout FilteredDelayAudioProcessor:
     params.add (std::make_unique<juce::AudioParameterFloat> (pID {"WIDTH", 1}, "Width", Range {0.0f, 5.0f, 0.1f}, 0.0f, "ms"));
     params.add (std::make_unique<juce::AudioParameterFloat> (pID {"MIX", 1}, "Mix", Range { 0.0f, 1.0f, 0.01f }, 0.0f, "%"));
     params.add (std::make_unique<juce::AudioParameterChoice>(pID {"FILTER_TYPE", 1}, "Filter Type", juce::StringArray("Lowpass", "Highpass", "Bandpass"), 0));
-    params.add (std::make_unique<juce::AudioParameterFloat> (pID {"CUTOFF", 1}, "Cutoff", Range {20.0f, 20000.0f, 1.0f, 0.2f}, 10000.f, "Hz"));
+    params.add (std::make_unique<juce::AudioParameterFloat> (pID {"CUTOFF", 1}, "Cutoff", Range {20.0f, 20000.0f, 1.0f, 0.2f}, 1000.f, "Hz"));
     params.add (std::make_unique<juce::AudioParameterFloat> (pID {"RESONANCE", 1}, "Resonance", Range {0.0f, 2.0f, 0.1f}, 0.707f));
     params.add (std::make_unique<juce::AudioParameterBool>  (pID {"MOD_BP", 1}, "Mod Bypass", true));
     params.add (std::make_unique<juce::AudioParameterFloat> (pID {"MOD_RATE", 1}, "Mod Rate", Range{0.05f, 5.0f, 0.01f}, 1.0f, "Hz"));
