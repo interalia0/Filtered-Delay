@@ -10,11 +10,13 @@
 
 #include <JuceHeader.h>
 
+
 //==============================================================================
 /**
 */
 class FilteredDelayAudioProcessor  : public juce::AudioProcessor,
                                      public juce::AudioProcessorValueTreeState::Listener
+                                     
 {
 public:
     //==============================================================================
@@ -53,17 +55,19 @@ public:
     //==============================================================================
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
-   
-    juce::AudioProcessorValueTreeState treeState;
+//   
 
     
 
 private:
+    juce::AudioProcessorValueTreeState treeState;
+
 
 // Delay
     static constexpr auto maxDelaySamples = 192000;
-    juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Lagrange3rd> delayL {maxDelaySamples};
-    juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Lagrange3rd> delayR {maxDelaySamples};
+    juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Linear> delayL {maxDelaySamples};
+    juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Linear> delayR {maxDelaySamples};
+
     
     float delayTimeInSamples {0};
     juce::SmoothedValue<float, juce::Interpolators::WindowedSinc> delayTimeSmoothedValue {0};
@@ -96,9 +100,9 @@ private:
 
 // ValueTree
     
-    
     void parameterChanged (const juce::String& parameterID, float newValue) override;
     juce::AudioProcessorValueTreeState::ParameterLayout createParameters();
+
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (FilteredDelayAudioProcessor)
 };

@@ -11,16 +11,9 @@
 
 //==============================================================================
 FilteredDelayAudioProcessor::FilteredDelayAudioProcessor()
-#ifndef JucePlugin_PreferredChannelConfigurations
-     : AudioProcessor (BusesProperties()
-                     #if ! JucePlugin_IsMidiEffect
-                      #if ! JucePlugin_IsSynth
-                       .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
-                      #endif
-                       .withOutput ("Output", juce::AudioChannelSet::stereo(), true)
-                     #endif
-                       ), treeState(*this, nullptr, "Parameters", createParameters())
-#endif
+: juce::AudioProcessor(BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
+    treeState(*this, nullptr, "Parameters", createParameters())
+
 {
     treeState.addParameterListener ("BPM_SYNC", this);
     treeState.addParameterListener ("SYNC_RATE_CHOICE", this);
@@ -54,7 +47,6 @@ FilteredDelayAudioProcessor::~FilteredDelayAudioProcessor()
     treeState.removeParameterListener ("MOD_DEPTH", this);
     treeState.removeParameterListener ("MOD_FB", this);
 }
-
 
 //==============================================================================
 const juce::String FilteredDelayAudioProcessor::getName() const
@@ -194,59 +186,49 @@ void FilteredDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
     
     juce::RangedAudioParameter* bpmSyncParameter = treeState.getParameter("BPM_SYNC");
     juce::RangedAudioParameter* syncRateChoiceParameter = treeState.getParameter("SYNC_RATE_CHOICE");
-    
     const int subdivisionIndex = static_cast<int>(syncRateChoiceParameter->getValue() * subdivisions.size());
     const float selectedSubdivisionValue = subdivisions[subdivisionIndex];
-    
     
     double bpm {120};
         if (auto bpmFromHost = *getPlayHead()->getPosition()->getBpm())
             bpm = bpmFromHost;
+    
+    if (bpmSyncParameter->getValue())
+    {
+        float delayTimeInSamples = (60.0 / bpm) * selectedSubdivisionValue  * getSampleRate();
+        float delayTimeInMillisec =  delayTimeInSamples / getSampleRate() * 1000.0f;
+        treeState.getParameter("RATE")->beginChangeGesture();
+        treeState.getParameter("RATE")->setValueNotifyingHost(juce::NormalisableRange<float>(1.0f, 2000.0f, 1.0f).convertTo0to1(delayTimeInMillisec));
+        treeState.getParameter("RATE")->endChangeGesture();
+        
+        delayTimeSmoothedValue.setTargetValue(delayTimeInSamples);
+        delayOffsetSmoothedValue.setTargetValue(delayOffsetInSamples);
+        delayL.setDelay(delayTimeSmoothedValue.getNextValue() + delayOffsetSmoothedValue.getNextValue());
+        delayR.setDelay(delayTimeSmoothedValue.getNextValue());
+    }
+    else
+    {
+        delayTimeSmoothedValue.setTargetValue(delayTimeInSamples);
+        delayL.setDelay(delayTimeSmoothedValue.getNextValue() + delayOffsetSmoothedValue.getNextValue());
+        delayR.setDelay(delayTimeSmoothedValue.getNextValue());
+    }
 
     for (auto i = totalNumInputChannels; i < totalNumOutputChannels; ++i)
         buffer.clear (i, 0, buffer.getNumSamples());
      
     const auto numChannels = juce::jmax (totalNumInputChannels, totalNumOutputChannels);
-
     auto audioBlock = juce::dsp::AudioBlock<float> (buffer).getSubsetChannelBlock (0, (size_t) numChannels);
     auto context = juce::dsp::ProcessContextReplacing<float> (audioBlock);
     const auto& input = context.getInputBlock();
     const auto& output = context.getOutputBlock();
 
     mixer.pushDrySamples(input);
-    
-//    Modulation
     mod.process(context);
     
     for (size_t channel = 0; channel < totalNumInputChannels; ++channel)
     {
         auto *samplesIn = input.getChannelPointer(channel);
         auto *samplesOut = output.getChannelPointer(channel);
-        
-        delayOffsetSmoothedValue.setTargetValue(delayOffsetInSamples);
-        
- 
-//          Check for synced or free delay time
-        if (bpmSyncParameter->getValue())
-        {
-            float delayTimeInSamples = (60.0 / bpm) * selectedSubdivisionValue  * getSampleRate();
-            float delayTimeInMillisec =  delayTimeInSamples / getSampleRate() * 1000.0f;
-            treeState.getParameter("RATE")->beginChangeGesture();
-            treeState.getParameter("RATE")->setValueNotifyingHost(juce::NormalisableRange<float>(1.0f, 2000.0f, 1.0f).convertTo0to1(delayTimeInMillisec));
-            treeState.getParameter("RATE")->endChangeGesture();
-            
-            delayTimeSmoothedValue.setTargetValue(delayTimeInSamples);
-            delayL.setDelay(delayTimeSmoothedValue.getNextValue() + delayOffsetSmoothedValue.getNextValue());
-            delayR.setDelay(delayTimeSmoothedValue.getNextValue());
-        }
-        else
-        {
-            delayTimeSmoothedValue.setTargetValue(delayTimeInSamples);
-            delayL.setDelay(delayTimeSmoothedValue.getNextValue() + delayOffsetSmoothedValue.getNextValue());
-            delayR.setDelay(delayTimeSmoothedValue.getNextValue());
-        }
-
-//        Left delay line
         
         if (channel == 0)
         {
@@ -262,9 +244,7 @@ void FilteredDelayAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer
                 lastDelayOutputL[channel] = samplesOut[sample] * delayFeedbackVolume[channel].getNextValue() * 0.5f;
             }
         }
-        
-//        Right delay line
-        
+    
         if (channel == 1)
         {
             for (size_t sample = 0; sample < input.getNumSamples(); ++sample)
@@ -291,8 +271,10 @@ bool FilteredDelayAudioProcessor::hasEditor() const
 
 juce::AudioProcessorEditor* FilteredDelayAudioProcessor::createEditor()
 {
-//    return new FilteredDelayAudioProcessorEditor (*this, treeState);
-    return new juce::GenericAudioProcessorEditor (*this);
+    return new FilteredDelayAudioProcessorEditor (*this, treeState);
+//    return new juce::GenericAudioProcessorEditor (*this);
+
+
 }
 
 //==============================================================================
